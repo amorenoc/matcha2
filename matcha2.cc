@@ -124,6 +124,7 @@ struct IsContaining
 struct EndsWith
 {
   bool matches(const std::string & actual, const std::string & expected) {
+    std::cout << "actual is " << actual << "expected " << expected << '\n';
     return false;
   }
 };
@@ -177,9 +178,23 @@ class Matcher : public Predicate
 public:
   Matcher(Ts&& ... args) : args(std::forward<Ts>(args)...)
   { }
+
+  template<class T>
+  std::enable_if_t<is_container<T>::value, bool>
+  matches(const T & val)
+  {
+    return matches(std::begin(val), std::end(val));
+  }
+
+  template<class T>
+  bool matches(const std::string & val)
+  {
+    return matches(val);
+  }
   
   template<class T, class indices = std::index_sequence_for<Ts...>>
-  bool matches(T actual)
+  std::enable_if_t<!is_container<T>::value, bool>
+  matches(const T & actual)
   {
     return matches_impl(actual, indices());
   }
@@ -286,31 +301,7 @@ bool expect(Iter first, Iter last, Matcher && matcher)
 }
 
 template<class T, class Matcher>
-std::enable_if_t<!matcha::is_container<T>::value, bool>
-expect(const T & val, Matcher && matcher)
-{
-  std::cout << "expect returns" << matcher.matches(val) << '\n';
-  return false;
-}
-
-template<class T, std::size_t N, class Matcher>
-std::enable_if_t<matcha::is_container<T[N]>::value, bool>
-expect(const T (&val)[N], Matcher && matcher)
-{
-  return expect(std::begin(val), std::end(val), 
-    std::forward<Matcher>(matcher));
-}
-
-template<class T, class Matcher>
-std::enable_if_t<matcha::is_container<T>::value, bool>
-expect(const T & val, Matcher && matcher)
-{
-  return expect(std::begin(val), std::end(val), 
-    std::forward<Matcher>(matcher));
-}
-
-template<class Matcher>
-bool expect(std::string val, Matcher && matcher)
+bool expect(const T & val, Matcher && matcher)
 {
   std::cout << "expect returns" << matcher.matches(val) << '\n';
   return false;
@@ -327,8 +318,10 @@ int main()
   std::array<int,3> foo = {5,2,3};
   expect(foo, contains(3));
   expect(std::begin(foo), std::end(foo), contains(3));
+
   expect(4, anyOf(1,2,3,4,5,6));
   expect(4, oneOf(1,2,3,4,5,6));
+
   expect("foo", null());
 
 }
