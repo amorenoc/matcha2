@@ -173,10 +173,12 @@ struct IsNull
 
 
 template<class Predicate, class ... Ts>
-class Matcher : public Predicate
+class Matcher
 {
 public:
-  Matcher(Ts&& ... args) : args(std::forward<Ts>(args)...)
+  Matcher(Ts&& ... args)
+  : predicate()
+  , args(std::forward<Ts>(args)...)
   { }
 
   template<class T>
@@ -209,17 +211,18 @@ private:
   template <class T, std::size_t... I>
   bool matches_impl(T actual, std::index_sequence<I...>)
   {
-    return Predicate::matches(actual, std::get<I>(args)...);
+    return predicate.matches(actual, std::get<I>(args)...);
   }
 
   template <class Iter, std::size_t... I>
   bool matches_impl(Iter first, Iter last, std::index_sequence<I...>)
   {
-    return Predicate::matches(first, last, std::get<I>(args)...);
+    return predicate.matches(first, last, std::get<I>(args)...);
   }
 
 private:
-    std::tuple<Ts...> args;
+  Predicate predicate;
+  std::tuple<Ts...> args;
 };
     
 // expect({1,2,3}, to(not(contain(2))));
