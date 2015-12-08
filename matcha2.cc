@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <iterator>
 #include <valarray>
-//#include "prettyprint.hpp"
 
 
 namespace matcha {
@@ -112,9 +111,12 @@ struct IsEqual
 template<class T>
 struct IsContaining
 {
-  template<class Iter>
-  bool matches(Iter first, Iter last, const T & expected) {
-    std::for_each(first, last, [](auto &n) { 
+  template<class C>
+  bool matches(const C & actual, const T & expected)
+  {
+    static_assert(is_container<C>::value, "expects a Container");
+
+    std::for_each(std::begin(actual), std::end(actual), [](auto &n) { 
       std::cout << "val is " << n << '\n';
     });
     return false;
@@ -130,11 +132,11 @@ struct EndsWith
 };
 
 template<class ... Ts>
-class AnyOf
+struct AnyOf
 {
   static_assert(is_same<Ts...>::value, 
     "IsNot matcher requires a Matcher parameter");
-public:
+
   template<class T>
   bool matches(const T & actual, const Ts & ... args) {
     for (auto&& x : { args... }) {
@@ -147,11 +149,8 @@ public:
 };
 
 template<class T, class ... Ts>
-class OneOf
+struct OneOf
 {
-  static_assert(is_same<T,Ts...>::value, 
-    "IsNot matcher requires a Matcher parameter");
-public:
   bool matches(const T & actual, const T & first, const Ts & ... rest) 
   {
     for (auto&& x : { first, rest... }) {
@@ -171,7 +170,6 @@ struct IsNull
   }
 };
 
-
 template<class Predicate, class ... Ts>
 class Matcher
 {
@@ -181,88 +179,75 @@ public:
   , args(std::forward<Ts>(args)...)
   { }
 
-  template<class T>
-  std::enable_if_t<is_container<T>::value, bool>
-  matches(const T & val)
-  {
-    return matches(std::begin(val), std::end(val));
-  }
-
-  template<class T>
-  bool matches(const std::string & val)
-  {
-    return matches(val);
-  }
-  
   template<class T, class indices = std::index_sequence_for<Ts...>>
-  std::enable_if_t<!is_container<T>::value, bool>
-  matches(const T & actual)
-  {
-    return matches_impl(actual, indices());
-  }
-
-  template<class Iter, class indices = std::index_sequence_for<Ts...>>
-  bool matches(Iter first, Iter last)
-  {
-    return matches_impl(first, last, indices());
-  }
+  bool matches(const T & actual);
+  bool matches(const std::string & val);
 
 private:
   template <class T, std::size_t... I>
-  bool matches_impl(T actual, std::index_sequence<I...>)
-  {
-    return predicate.matches(actual, std::get<I>(args)...);
-  }
-
-  template <class Iter, std::size_t... I>
-  bool matches_impl(Iter first, Iter last, std::index_sequence<I...>)
-  {
-    return predicate.matches(first, last, std::get<I>(args)...);
-  }
+  bool matches(const T & actual, std::index_sequence<I...>);
 
 private:
   Predicate predicate;
   std::tuple<Ts...> args;
 };
-    
-// expect({1,2,3}, to(not(contain(2))));
-// expect("kayak", to(not(be(palindrome()))));
-// expect(std::begin(v), std::end(v), to(have(everyItem(equal(3)))));
 
+template<class Predicate, class ... Ts>
+template <class T, std::size_t... I>
+bool Matcher<Predicate,Ts...>::matches(const T & actual, std::index_sequence<I...>)
+{
+  return predicate.matches(actual, std::get<I>(args)...);
+}
+
+template<class Predicate, class ... Ts>
+template<class T, class indices>
+bool Matcher<Predicate,Ts...>::matches(const T & actual)
+{
+  return matches(actual, indices());
+}
+
+template<class Predicate, class ... Ts>
+bool Matcher<Predicate,Ts...>::matches(const std::string & val)
+{
+  return matches(val);
+}
 
 /*
  * factory functions
  */
-template<class Predicate>
-auto make_matcher() {
-  std::cout << "no type parameter" << '\n';
-  return Matcher<Predicate>();
-}
-
 template<class Predicate, class ... T>
-auto make_matcher(T && ... val) {
-  std::cout << "type parameter" << '\n';
-  return Matcher<Predicate, T...>(std::forward<T>(val)...);
+auto make_matcher(T && ... val) 
+{ 
+  return Matcher<Predicate, T...>
+    (std::forward<T>(val)...);
 }
 
 template<template <class...> class Predicate, class ... T>
-auto make_matcher(T && ... val) {
-  std::cout << "template parameter" << '\n';
-  return Matcher<Predicate<T...>, T...>(std::forward<T>(val)...);
+auto make_matcher(T && ... val) 
+{
+  return Matcher<Predicate<T...>, T...>
+    (std::forward<T>(val)...);
 }
+
+template<class Predicate>
+auto make_matcher()
+{
+  return Matcher<Predicate>();
+}
+
 
 }; // end matcha
 
-auto endsWith(const std::string & value) {
+auto endWith = [](const std::string & value) {
   return matcha::make_matcher<matcha::EndsWith>(value);
-}
+};
+auto endsWith = endWith;
 
-auto equals = [](auto && value) {
+auto equal = [](auto && value) {
   return matcha::make_matcher<matcha::IsEqual>
     (std::forward<decltype(value)>(value));
 };
-
-auto equal = equals;
+auto equals = equal;
 
 template <class T, class ... Ts>
 auto anyOf(T && first, Ts && ... rest)
@@ -285,23 +270,11 @@ auto null = [] {
   return matcha::make_matcher<matcha::IsNull>();
 };
 
-auto contains = [](auto && value) {
-return matcha::make_matcher<matcha::IsContaining>
-(std::forward<decltype(value)>(value));
+auto contain = [](auto && value) {
+  return matcha::make_matcher<matcha::IsContaining>
+    (std::forward<decltype(value)>(value));
 };
-auto contain = contains;
-
-template<class Iter, class Matcher>
-bool expect(Iter first, Iter last, Matcher && matcher)
-{
-  const char *delim = "[";
-  std::for_each(first, last, [&delim](auto & val) { 
-    std::cout << delim << val;
-    delim = ", ";
-  });
-  std::cout << ']' << '\n';
-  return matcher.matches(first, last);
-}
+auto contains = contain;
 
 template<class T, class Matcher>
 bool expect(const T & val, Matcher && matcher)
@@ -309,6 +282,11 @@ bool expect(const T & val, Matcher && matcher)
   std::cout << "expect returns" << matcher.matches(val) << '\n';
   return false;
 }
+
+
+// expect({1,2,3}, to(not(contain(2))));
+// expect("kayak", to(not(be(palindrome()))));
+// expect(std::begin(v), std::end(v), to(have(everyItem(equal(3)))));
 
 int main()
 {
@@ -320,11 +298,24 @@ int main()
 
   std::array<int,3> foo = {5,2,3};
   expect(foo, contains(3));
-  expect(std::begin(foo), std::end(foo), contains(3));
+  //expect(std::begin(foo), std::end(foo), contains(3));
 
   expect(4, anyOf(1,2,3,4,5,6));
-  expect(4, oneOf(1,2,3,4,5,6));
+  expect(1, oneOf(1,2,3,4,5));
 
   expect("foo", null());
 
 }
+
+//template<class Iter, class Matcher>
+//bool expect(Iter first, Iter last, Matcher && matcher)
+//{
+//  const char *delim = "[";
+//  std::for_each(first, last, [&delim](auto & val) { 
+//    std::cout << delim << val;
+//    delim = ", ";
+//  });
+//  std::cout << ']' << '\n';
+//  return matcher.matches(first, last);
+//}
+
