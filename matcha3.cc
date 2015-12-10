@@ -165,7 +165,10 @@ struct OneOf
 };
 
 template<typename...>
-struct IsNull
+struct IsNull;
+
+template<>
+struct IsNull<>
 {
   template<typename T>
   bool matches(const T & actual)
