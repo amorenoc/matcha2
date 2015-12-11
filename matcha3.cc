@@ -4,6 +4,7 @@
 #include <tuple>
 #include <utility>
 #include <array>
+#include <map>
 #include <initializer_list>
 #include <type_traits>
 #include <algorithm>
@@ -108,8 +109,11 @@ struct IsEqual
 
 };
 
+template<class...>
+struct IsContaining;
+
 template<class T>
-struct IsContaining
+struct IsContaining<T>
 {
   template<class C>
   bool matches(const C & actual, const T & expected)
@@ -123,13 +127,24 @@ struct IsContaining
   }
 };
 
+template<class Key, class T>
+struct IsContaining<Key,T>
+{
+  template<class C>
+  bool matches(const C & actual, const Key key, const T & value)
+  {
+    return false;
+  }
+
+};
+
 template<typename T>
 struct EndsWith;
 
 template<>
 struct EndsWith<const std::string &>
 {
-  bool matches(const std::string & actual, const std::string & expected) {
+  bool matches(std::string actual, std::string expected) {
     std::cout << "actual is " << actual << "expected " << expected << '\n';
     return false;
   }
@@ -186,7 +201,6 @@ public:
 
   template<class T, class indices = std::index_sequence_for<Ts...>>
   bool matches(const T & actual);
-  bool matches(const std::string & val);
 
 private:
   template <class T, std::size_t... I>
@@ -210,23 +224,9 @@ bool Matcher<Predicate,Ts...>::matches(const T & actual)
   return dispatch(actual, indices());
 }
 
-template<template <class...> class Predicate, class ... Ts>
-bool Matcher<Predicate,Ts...>::matches(const std::string & val)
-{
-  return matches(val);
-}
-
 /*
  * factory functions
  */
-//template<class Predicate, class ... T>
-//auto make_matcher(T && ... val) 
-//{ 
-//  std::cout << "foo" << '\n';
-//  return Matcher<Predicate, T...>
-//    (std::forward<T>(val)...);
-//}
-
 template<template <class...> class Predicate, class ... T>
 auto make_matcher(T && ... val) 
 {
@@ -252,7 +252,7 @@ template <class T, class ... Ts>
 auto anyOf(T && first, Ts && ... rest)
 {
   return matcha::make_matcher<matcha::AnyOf>
-    (std::forward<T>(first), std::forward<T>(rest)...);
+    (std::forward<T>(first), std::forward<Ts>(rest)...);
 }
 
 template <class T, class ... Ts>
@@ -269,11 +269,11 @@ auto null = [] {
   return matcha::make_matcher<matcha::IsNull>();
 };
 
-auto contain = [](auto && value) {
+template <class T, class ... Ts>
+auto contain(T && first, Ts && ... rest) {
   return matcha::make_matcher<matcha::IsContaining>
-    (std::forward<decltype(value)>(value));
+    (std::forward<T>(first), std::forward<Ts>(rest)...);
 };
-auto contains = contain;
 
 template<class T, class Matcher>
 bool expect(const T & val, Matcher && matcher)
@@ -296,7 +296,16 @@ int main()
   expect(b, contain(3));
 
   std::array<int,3> foo = {5,2,3};
-  expect(foo, contains(3));
+  expect(foo, contain(3));
+
+  const std::map<std::string, int> bar {
+    {"this",  100},
+    {"can",   100},
+    {"be",    100},
+    {"const", 100},
+  };
+
+  expect(bar, contain("string", 100));
   //expect(std::begin(foo), std::end(foo), contains(3));
 
   expect(4, anyOf(1,2,3,4,5,6));
