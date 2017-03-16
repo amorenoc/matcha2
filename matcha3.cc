@@ -66,16 +66,6 @@ namespace matcha {
     return matches_impl(actual, std::index_sequence_for<Ts...>{});
   }
 
-  /*
-   * factory functions
-   */
-  template<template <class...> class Predicate, class ... T>
-  auto make_matcher(T && ... val) 
-  {
-    return Matcher<Predicate, T...>(std::forward<T>(val)...);
-  }
-
-
   template<typename T, class = void>
   struct IsEqual
   {
@@ -145,8 +135,7 @@ namespace matcha {
   template<class ... Ts>
   struct AnyOf
   {
-    static_assert(is_same<Ts...>::value, 
-      "IsNot matcher requires a Matcher parameter");
+    static_assert(is_same<Ts...>::value, "IsNot matcher requires a Matcher parameter");
 
     template<class T>
     bool matches(const T & actual, const Ts & ... args) {
@@ -162,6 +151,8 @@ namespace matcha {
   template<class T, class ... Ts>
   struct OneOf
   {
+    static_assert(is_same<T,Ts...>::value, "oneOf args must be all same type");
+
     bool matches(const T & actual, const T & first, const Ts & ... rest) 
     {
       for (auto&& x : { first, rest... }) {
@@ -185,53 +176,71 @@ namespace matcha {
     }
   };
 
+  template<template <class...> class Predicate, class ... T>
+  auto make_matcher(T && ... val) 
+  {
+    return Matcher<Predicate, T...>(std::forward<T>(val)...);
+  }
+
+  auto endWith = [](const std::string & value) 
+  {
+    return make_matcher<EndsWith>(value);
+  };
+
+  auto endsWith = endWith;
+
+  auto equal = [](auto && value)
+  {
+    return make_matcher<IsEqual>(std::forward<decltype(value)>(value));
+  };
+
+  auto equals = equal;
+
+  template <class T, class ... Ts>
+  auto anyOf(T && first, Ts && ... rest)
+  {
+    return make_matcher<AnyOf>(std::forward<T>(first), 
+        std::forward<Ts>(rest)...);
+  }
+
+  template <class T, class ... Ts>
+  auto oneOf(T && first, Ts && ... rest)
+  {
+    return make_matcher<OneOf>(std::forward<T>(first),
+        std::forward<Ts>(rest)...);
+  }
+
+  auto null() 
+  {
+    return make_matcher<IsNull>();
+  };
+
+  template <class T, class ... Ts>
+  auto contain(T && first, Ts && ... rest) 
+  {
+    return make_matcher<IsContaining>(std::forward<T>(first), 
+        std::forward<Ts>(rest)...);
+  };
+
+  template<class T, class Matcher>
+  bool expect(const T & val, Matcher && matcher)
+  {
+    std::cout << "expect returns" << matcher.matches(val) << '\n';
+    return false;
+  }
+
 }; // end matcha
 
-auto endWith = [](const std::string & value) {
-  return matcha::make_matcher<matcha::EndsWith>(value);
-};
-auto endsWith = endWith;
 
-auto equal = [](auto && value) {
-  return matcha::make_matcher<matcha::IsEqual>
-    (std::forward<decltype(value)>(value));
-};
-auto equals = equal;
-
-template <class T, class ... Ts>
-auto anyOf(T && first, Ts && ... rest)
-{
-  return matcha::make_matcher<matcha::AnyOf>
-    (std::forward<T>(first), std::forward<Ts>(rest)...);
-}
-
-template <class T, class ... Ts>
-auto oneOf(T && first, Ts && ... rest)
-{
-  static_assert(matcha::is_same<T,Ts...>::value, 
-  "oneOf args must be all same type");
-
-  return matcha::make_matcher<matcha::OneOf>
-    (std::forward<T>(first), std::forward<Ts>(rest)...);
-}
-
-auto null = [] {
-  return matcha::make_matcher<matcha::IsNull>();
-};
-
-template <class T, class ... Ts>
-auto contain(T && first, Ts && ... rest) {
-  return matcha::make_matcher<matcha::IsContaining>
-    (std::forward<T>(first), std::forward<Ts>(rest)...);
-};
-
-template<class T, class Matcher>
-bool expect(const T & val, Matcher && matcher)
-{
-  std::cout << "expect returns" << matcher.matches(val) << '\n';
-  return false;
-}
-
+using matcha::expect;
+using matcha::contain;
+using matcha::null;
+using matcha::anyOf;
+using matcha::oneOf;
+using matcha::equal;
+using matcha::equals;
+using matcha::endWith;
+using matcha::endsWith;
 
 // expect({1,2,3}, to(not(contain(2))));
 // expect("kayak", to(not(be(palindrome()))));
