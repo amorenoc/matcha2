@@ -66,6 +66,46 @@ namespace matcha {
     return matches_impl(actual, std::index_sequence_for<Ts...>{});
   }
 
+  template<template <class...> class Predicate, class ... T>
+  auto make_matcher(T && ... val) 
+  {
+    return Matcher<Predicate, T...>(std::forward<T>(val)...);
+  }
+
+  template<typename Matcher>
+  struct To 
+  {
+    template<typename T>
+    bool matches(const T & actual, Matcher & expected)
+    {
+      std::cout << "to" << std::endl;
+      return expected.matches(actual);
+    }
+  };
+
+  template <typename Matcher>
+  auto to(Matcher && matcher) 
+  {
+    return make_matcher<To>(std::forward<Matcher>(matcher));
+  }
+
+  template<typename Matcher>
+  struct Not 
+  {
+    template<typename T>
+    bool matches(const T & actual, Matcher & expected)
+    {
+      std::cout << "not" << std::endl;
+      return !expected.matches(actual);
+    }
+  };
+
+  template <typename Matcher>
+  auto operator!(Matcher && matcher)
+  {
+    return make_matcher<Not>(std::forward<Matcher>(matcher));
+  }
+
   template<typename T, class = void>
   struct IsEqual
   {
@@ -91,8 +131,14 @@ namespace matcha {
     }
   };
 
-  template<class...>
-  struct IsContaining;
+  auto equal = [](auto && value)
+  {
+    return make_matcher<IsEqual>(std::forward<decltype(value)>(value));
+  };
+
+  auto equals = equal;
+
+  template<class...> struct IsContaining;
 
   template<class T>
   struct IsContaining<T>
@@ -120,6 +166,13 @@ namespace matcha {
 
   };
 
+  template <class T, class ... Ts>
+  auto contain(T && first, Ts && ... rest) 
+  {
+    return make_matcher<IsContaining>(std::forward<T>(first), 
+      std::forward<Ts>(rest)...);
+  }
+
   template<typename T>
   struct EndsWith;
 
@@ -132,13 +185,22 @@ namespace matcha {
     }
   };
 
+  auto endWith = [](const std::string & value) 
+  {
+    return make_matcher<EndsWith>(value);
+  };
+
+  auto endsWith = endWith;
+
+
   template<class ... Ts>
   struct AnyOf
   {
     static_assert(is_same<Ts...>::value, "IsNot matcher requires a Matcher parameter");
 
     template<class T>
-    bool matches(const T & actual, const Ts & ... args) {
+    bool matches(const T & actual, const Ts & ... args) 
+    {
       for (auto&& x : { args... }) {
         std::cout << "anyof is " << x << '\n';
   //            if (x.matches(actual))
@@ -146,7 +208,15 @@ namespace matcha {
       }
       return false;
     }
+
   };
+
+  template <class T, class ... Ts> 
+  auto anyOf(T && first, Ts && ... rest)
+  {
+    return make_matcher<AnyOf>(std::forward<T>(first), 
+      std::forward<Ts>(rest)...);
+  }
 
   template<class T, class ... Ts>
   struct OneOf
@@ -162,6 +232,14 @@ namespace matcha {
     }
   };
 
+  template <class T, class ... Ts>
+  auto oneOf(T && first, Ts && ... rest)
+  {
+    return make_matcher<OneOf>(std::forward<T>(first),
+      std::forward<Ts>(rest)...);
+  }
+
+
   template<typename...>
   struct IsNull;
 
@@ -176,50 +254,9 @@ namespace matcha {
     }
   };
 
-  template<template <class...> class Predicate, class ... T>
-  auto make_matcher(T && ... val) 
-  {
-    return Matcher<Predicate, T...>(std::forward<T>(val)...);
-  }
-
-  auto endWith = [](const std::string & value) 
-  {
-    return make_matcher<EndsWith>(value);
-  };
-
-  auto endsWith = endWith;
-
-  auto equal = [](auto && value)
-  {
-    return make_matcher<IsEqual>(std::forward<decltype(value)>(value));
-  };
-
-  auto equals = equal;
-
-  template <class T, class ... Ts>
-  auto anyOf(T && first, Ts && ... rest)
-  {
-    return make_matcher<AnyOf>(std::forward<T>(first), 
-        std::forward<Ts>(rest)...);
-  }
-
-  template <class T, class ... Ts>
-  auto oneOf(T && first, Ts && ... rest)
-  {
-    return make_matcher<OneOf>(std::forward<T>(first),
-        std::forward<Ts>(rest)...);
-  }
-
   auto null() 
   {
     return make_matcher<IsNull>();
-  };
-
-  template <class T, class ... Ts>
-  auto contain(T && first, Ts && ... rest) 
-  {
-    return make_matcher<IsContaining>(std::forward<T>(first), 
-        std::forward<Ts>(rest)...);
   };
 
   template<class T, class Matcher>
@@ -232,7 +269,10 @@ namespace matcha {
 }; // end matcha
 
 
+
 using matcha::expect;
+using matcha::to;
+using matcha::operator!;
 using matcha::contain;
 using matcha::null;
 using matcha::anyOf;
@@ -248,11 +288,11 @@ using matcha::endsWith;
 
 int main()
 {
-  expect("foo", endsWith("foo"));
+  expect("foo", to(not(endWith("foo"))));
   expect(3, equals(4));
 
   int b[] = {3,2,3,4};
-  expect(b, contain(3));
+  expect(b, to(contain(3)));
 
   std::array<int,3> foo = {5,2,3};
   expect(foo, contain(3));
@@ -289,4 +329,6 @@ int main()
 //  std::cout << ']' << '\n';
 //  return matcher.matches(first, last);
 //}
+
+
 
