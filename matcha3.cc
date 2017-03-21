@@ -11,43 +11,26 @@
 #include <iterator>
 #include <valarray>
 #include <typeinfo>
-
 #include "prettyprint.hpp"
 
 namespace matcha {
-
-  template<typename T>
-  struct is_container : pretty_print::is_container<T> 
-  { };
-
-  template<typename T, typename... Rest>
-  struct is_same : std::false_type
-  { };
-
-  template<typename T, typename First>
-  struct is_same<T, First> : std::is_same<T, First>
-  { };
-
-  template<typename T, typename First, typename... Rest>
-  struct is_same<T, First, Rest...>
-    : std::integral_constant<
-        bool,
-        std::is_same<T, First>::value && is_same<T, Rest...>::value
-      >
-  { };
 
   template<template <class...> class Predicate, class ... Ts>
   class Matcher
   {
   public:
-    Matcher(Ts&& ... args) : pred(), args(std::forward<Ts>(args)...) { }
-    template<class T> bool matches(const T &);
+    Matcher(Ts&& ... args) : 
+      pred(), 
+      args(std::forward<Ts>(args)...) 
+    { }
+
+    template<class T> 
+    bool matches(const T &);
 
   private:
     template <class T, std::size_t... Is>
     bool matches_impl(const T & actual, std::index_sequence<Is...>);
 
-  private:
     Predicate<std::decay_t<Ts>...> pred;
     std::tuple<Ts...> args;
   };
@@ -72,13 +55,28 @@ namespace matcha {
     return Matcher<Predicate, T...>(std::forward<T>(val)...);
   }
 
-  template<typename>
-  struct is_matcher : std::false_type 
+  template<typename T>
+  struct is_container : pretty_print::is_container<T> { };
+
+  template<typename T, typename... Rest>
+  struct is_same : std::false_type { };
+
+  template<typename T, typename First>
+  struct is_same<T, First> : std::is_same<T, First> { };
+
+  template<typename T, typename First, typename... Rest>
+  struct is_same<T, First, Rest...>
+    : std::integral_constant<
+        bool,
+        std::is_same<T, First>::value && is_same<T, Rest...>::value
+      >
   { };
 
+  template<typename>
+  struct is_matcher : std::false_type { };
+
   template<template <class...> class Predicate, class ... Ts>
-  struct is_matcher<Matcher<Predicate,Ts...>>: std::true_type
-  { };
+  struct is_matcher<Matcher<Predicate,Ts...>>: std::true_type { };
 
   template<typename T>
   struct To 
@@ -341,4 +339,5 @@ int main()
 //  std::cout << ']' << '\n';
 //  return matcher.matches(first, last);
 //}
+
 
