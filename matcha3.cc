@@ -72,38 +72,50 @@ namespace matcha {
     return Matcher<Predicate, T...>(std::forward<T>(val)...);
   }
 
-  template<typename Matcher>
+  template<typename>
+  struct is_matcher : std::false_type 
+  { };
+
+  template<template <class...> class Predicate, class ... Ts>
+  struct is_matcher<Matcher<Predicate,Ts...>>: std::true_type
+  { };
+
+  template<typename T>
   struct To 
   {
-    template<typename T>
-    bool matches(const T & actual, Matcher & expected)
+    static_assert(is_matcher<T>::value, "expects a Matcher argument");
+
+    template<typename U>
+    bool matches(const U & actual, T & expected)
     {
       std::cout << "to" << std::endl;
       return expected.matches(actual);
     }
   };
 
-  template <typename Matcher>
-  auto to(Matcher && matcher) 
+  template <typename T>
+  auto to(T && matcher) 
   {
-    return make_matcher<To>(std::forward<Matcher>(matcher));
+    return make_matcher<To>(std::forward<T>(matcher));
   }
 
-  template<typename Matcher>
+  template<typename T>
   struct Not 
   {
-    template<typename T>
-    bool matches(const T & actual, Matcher & expected)
+    static_assert(is_matcher<T>::value, "expects a Matcher argument");
+
+    template<typename U>
+    bool matches(const U & actual, T & expected)
     {
       std::cout << "not" << std::endl;
       return !expected.matches(actual);
     }
   };
 
-  template <typename Matcher>
-  auto operator!(Matcher && matcher)
+  template <typename T>
+  auto operator!(T && matcher)
   {
-    return make_matcher<Not>(std::forward<Matcher>(matcher));
+    return make_matcher<Not>(std::forward<T>(matcher));
   }
 
   template<typename T, class = void>
@@ -329,6 +341,4 @@ int main()
 //  std::cout << ']' << '\n';
 //  return matcher.matches(first, last);
 //}
-
-
 
