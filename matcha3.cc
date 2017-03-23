@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <tuple>
@@ -19,17 +20,28 @@ namespace matcha {
   class Matcher
   {
   public:
-    Matcher(Ts&& ... args) : 
-      pred(), 
-      args(std::forward<Ts>(args)...) 
+    Matcher(Ts&& ... args)
+      : pred()
+      , args(std::forward<Ts>(args)...) 
     { }
 
-    template<class T> 
+    template<class T>
     bool matches(const T &);
+    void describe(std::ostream& o);
+
+    friend std::ostream& operator<<(std::ostream& o, 
+        Matcher & matcher) 
+    {
+        matcher.describe(o);
+        return o;
+    }
 
   private:
     template <class T, std::size_t... Is>
     bool matches_impl(const T & actual, std::index_sequence<Is...>);
+
+    template <std::size_t... Is>
+    void describe_impl(std::ostream& o, std::index_sequence<Is...>);
 
     Predicate<std::decay_t<Ts>...> pred;
     std::tuple<Ts...> args;
@@ -37,7 +49,8 @@ namespace matcha {
 
   template<template <class...> class Predicate, class ... Ts>
   template <class T, std::size_t... Is>
-  bool Matcher<Predicate,Ts...>::matches_impl(const T & actual, std::index_sequence<Is...>)
+  bool Matcher<Predicate,Ts...>::matches_impl(const T & actual, 
+      std::index_sequence<Is...>)
   {
     return pred.matches(actual, std::get<Is>(args)...);
   }
@@ -47,6 +60,20 @@ namespace matcha {
   bool Matcher<Predicate,Ts...>::matches(const T & actual)
   {
     return matches_impl(actual, std::index_sequence_for<Ts...>{});
+  }
+
+  template<template <class...> class Predicate, class ... Ts>
+  template <std::size_t... Is>
+  void Matcher<Predicate,Ts...>::describe_impl(std::ostream& o, 
+      std::index_sequence<Is...>)
+  {
+    return pred.describe(o, std::get<Is>(args)...);
+  }
+
+  template<template <class...> class Predicate, class ... Ts>
+  void Matcher<Predicate,Ts...>::describe(std::ostream& o)
+  {
+    return describe_impl(o, std::index_sequence_for<Ts...>{});
   }
 
   template<template <class...> class Predicate, class ... T>
@@ -86,8 +113,11 @@ namespace matcha {
     template<typename U>
     bool matches(const U & actual, T & expected)
     {
-      std::cout << "to" << std::endl;
       return expected.matches(actual);
+    }
+
+    void describe(std::ostream& o, T & expected) {
+      o << "to " << expected;
     }
   };
 
@@ -103,10 +133,12 @@ namespace matcha {
     static_assert(is_matcher<T>::value, "expects a Matcher argument");
 
     template<typename U>
-    bool matches(const U & actual, T & expected)
-    {
-      std::cout << "not" << std::endl;
+    bool matches(const U & actual, T & expected) {
       return !expected.matches(actual);
+    }
+
+    void describe(std::ostream& o, T & expected) {
+      o << "not " << expected;
     }
   };
 
@@ -119,10 +151,13 @@ namespace matcha {
   template<typename T, class = void>
   struct IsEqual
   {
-    bool matches(const T & actual, const T & expected)
-    {
+    bool matches(const T & actual, const T & expected) {
       std::cout << "not container" << std::endl;
       return actual == expected;
+    }
+
+    void describe(std::ostream& o, T const& expected) {
+       o << "equal " << expected;
     }
   };
 
@@ -130,14 +165,17 @@ namespace matcha {
   struct IsEqual<T, std::enable_if_t<is_container<T>::value>> 
   {
     template<typename U>
-    bool matches(const U & actual, const T & expected)
-    {
+    bool matches(const U & actual, const T & expected) {
       using std::begin;
       using std::end;
 
       std::cout << "container" << std::endl;
       return std::equal(begin(actual),   end(actual),
                         begin(expected), end(expected));
+    }
+
+    void describe(std::ostream& o, T const& expected) {
+       o << "equal " << expected;
     }
   };
 
@@ -163,6 +201,10 @@ namespace matcha {
       });
       return false;
     }
+
+    void describe(std::ostream& o, const T & expected) {
+      o << "contain " << expected;
+    }
   };
 
   template<class Key, class T>
@@ -172,6 +214,10 @@ namespace matcha {
     bool matches(const C & actual, const Key key, const T & value)
     {
       return false;
+    }
+
+    void describe(std::ostream& o, const Key key, const T & value) {
+      o << "contain key " << key << " and value " <<  value;
     }
 
   };
@@ -190,9 +236,13 @@ namespace matcha {
   struct EndsWith<std::string>
   {
     bool matches(std::string actual, std::string expected) {
-      std::cout << "actual is " << actual << "expected " << expected << '\n';
-      return false;
+      return true;
     }
+
+    void describe(std::ostream& o, std::string expected) {
+      o << "end with " << expected;
+    }
+
   };
 
   auto endWith = [](const std::string & value) 
@@ -206,7 +256,8 @@ namespace matcha {
   template<class ... Ts>
   struct AnyOf
   {
-    static_assert(is_same<Ts...>::value, "IsNot matcher requires a Matcher parameter");
+    static_assert(is_same<Ts...>::value,
+        "IsNot matcher requires a Matcher parameter");
 
     template<class T>
     bool matches(const T & actual, const Ts & ... args) 
@@ -231,7 +282,8 @@ namespace matcha {
   template<class T, class ... Ts>
   struct OneOf
   {
-    static_assert(is_same<T,Ts...>::value, "oneOf args must be all same type");
+    static_assert(is_same<T,Ts...>::value,
+        "oneOf args must be all same type");
 
     bool matches(const T & actual, const T & first, const Ts & ... rest) 
     {
@@ -269,15 +321,55 @@ namespace matcha {
     return make_matcher<IsNull>();
   };
 
-  template<class T, class Matcher>
-  bool expect(const T & val, Matcher && matcher)
+  template <typename T>
+  std::string to_string(T & val)
   {
-    std::cout << "expect returns" << matcher.matches(val) << '\n';
-    return false;
+    std::ostringstream out;
+    out << val;
+    return out.str();
+  }
+
+  template<typename T>
+  struct output_traits;
+
+  template<>
+  struct output_traits<bool>
+  {
+    typedef bool result_type;
+    static constexpr bool success = true;
+    static constexpr bool failure = false;
+
+    static std::ostream & ostream(bool & result) {
+      return std::cout;
+    }
+  };
+
+
+  template<class Result, class T, class U>
+  auto assertResult(T const& actual, U && matcher) 
+  {
+    Result result = output_traits<Result>::failure;
+    //const std::string red("\033[0;31m");
+    //const std::string green("\033[1;32m");
+
+    if (matcher.matches(actual))
+      return output_traits<Result>::success;
+
+    output_traits<Result>::ostream(result)
+      << "expected " 
+      << to_string(actual) << ' '
+      << to_string(matcher)
+      << '\n'; 
+
+    return result;
+  }
+
+  template<class T, class Matcher>
+  auto expect(T const& actual, Matcher && matcher) {
+    return assertResult<bool>(actual, matcher);
   }
 
 }; // end matcha
-
 
 
 using matcha::expect;
@@ -299,7 +391,7 @@ using matcha::endsWith;
 int main()
 {
   expect("foo", to(not(endWith("foo"))));
-  expect(3, equals(4));
+  expect(3, to(equal(4)));
 
   int b[] = {3,2,3,4};
   expect(b, to(contain(3)));
@@ -321,10 +413,10 @@ int main()
   expect(bar, contain("string", 100));
   //expect(std::begin(foo), std::end(foo), contains(3));
 
-  expect(4, anyOf(1,2,3,4,5,6));
-  expect(1, oneOf(1,2,3,4,5));
+  //expect(4, to(be(anyOf(1,2,3,4,5,6))));
+  //expect(1, oneOf(1,2,3,4,5));
 
-  expect("foo", null());
+  //expect("foo", null());
 
 }
 
@@ -339,5 +431,4 @@ int main()
 //  std::cout << ']' << '\n';
 //  return matcher.matches(first, last);
 //}
-
 
