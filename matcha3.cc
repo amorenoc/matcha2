@@ -1,7 +1,3 @@
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <vector>
 #include <tuple>
 #include <utility>
 #include <array>
@@ -121,12 +117,6 @@ namespace matcha {
     }
   };
 
-  template <typename T>
-  auto to(T && matcher) 
-  {
-    return make_matcher<To>(std::forward<T>(matcher));
-  }
-
   template<typename T>
   struct Not 
   {
@@ -141,12 +131,6 @@ namespace matcha {
       o << "not " << expected;
     }
   };
-
-  template <typename T>
-  auto operator!(T && matcher)
-  {
-    return make_matcher<Not>(std::forward<T>(matcher));
-  }
 
   template<typename T, class = void>
   struct IsEqual
@@ -178,13 +162,6 @@ namespace matcha {
        o << "equal " << expected;
     }
   };
-
-  auto equal = [](auto && value)
-  {
-    return make_matcher<IsEqual>(std::forward<decltype(value)>(value));
-  };
-
-  auto equals = equal;
 
   template<class...> struct IsContaining;
 
@@ -222,13 +199,6 @@ namespace matcha {
 
   };
 
-  template <class T, class ... Ts>
-  auto contain(T && first, Ts && ... rest) 
-  {
-    return make_matcher<IsContaining>(std::forward<T>(first), 
-      std::forward<Ts>(rest)...);
-  }
-
   template<typename T>
   struct EndsWith;
 
@@ -244,14 +214,6 @@ namespace matcha {
     }
 
   };
-
-  auto endWith = [](const std::string & value) 
-  {
-    return make_matcher<EndsWith>(value);
-  };
-
-  auto endsWith = endWith;
-
 
   template<class ... Ts>
   struct AnyOf
@@ -272,13 +234,6 @@ namespace matcha {
 
   };
 
-  template <class T, class ... Ts> 
-  auto anyOf(T && first, Ts && ... rest)
-  {
-    return make_matcher<AnyOf>(std::forward<T>(first), 
-      std::forward<Ts>(rest)...);
-  }
-
   template<class T, class ... Ts>
   struct OneOf
   {
@@ -294,14 +249,6 @@ namespace matcha {
     }
   };
 
-  template <class T, class ... Ts>
-  auto oneOf(T && first, Ts && ... rest)
-  {
-    return make_matcher<OneOf>(std::forward<T>(first),
-      std::forward<Ts>(rest)...);
-  }
-
-
   template<typename...>
   struct IsNull;
 
@@ -314,11 +261,6 @@ namespace matcha {
       std::cout << "actual is null? " << actual << '\n';
       return false;
     }
-  };
-
-  auto null() 
-  {
-    return make_matcher<IsNull>();
   };
 
   template <typename T>
@@ -369,24 +311,65 @@ namespace matcha {
     return assertResult<bool>(actual, matcher);
   }
 
+  namespace predicates {
+
+    template <typename T>
+    auto to(T && matcher) 
+    {
+      return make_matcher<To>(std::forward<T>(matcher));
+    }
+
+    template <typename T>
+    auto operator!(T && matcher)
+    {
+      return make_matcher<Not>(std::forward<T>(matcher));
+    }
+
+    auto null() {
+      return make_matcher<IsNull>();
+    }
+
+    template <class T, class ... Ts>
+    auto oneOf(T && first, Ts && ... rest) 
+    {
+      return make_matcher<OneOf>(std::forward<T>(first),
+        std::forward<Ts>(rest)...);
+    }
+
+    template <class T, class ... Ts> 
+    auto anyOf(T && first, Ts && ... rest)
+    {
+      return make_matcher<AnyOf>(std::forward<T>(first), 
+        std::forward<Ts>(rest)...);
+    }
+
+    auto endWith = [](const std::string & value) 
+    {
+      return make_matcher<EndsWith>(value);
+    };
+
+    auto endsWith = endWith;
+
+    template <class T, class ... Ts>
+    auto contain(T && first, Ts && ... rest) 
+    {
+      return make_matcher<IsContaining>(std::forward<T>(first), 
+        std::forward<Ts>(rest)...);
+    }
+
+    auto equal = [](auto && value)
+    {
+      return make_matcher<IsEqual>(std::forward<decltype(value)>(value));
+    };
+
+    auto equals = equal;
+  }; // end predicates
+
 }; // end matcha
 
 
+using namespace matcha::predicates;
 using matcha::expect;
-using matcha::to;
-using matcha::operator!;
-using matcha::contain;
-using matcha::null;
-using matcha::anyOf;
-using matcha::oneOf;
-using matcha::equal;
-using matcha::equals;
-using matcha::endWith;
-using matcha::endsWith;
-
-// expect({1,2,3}, to(not(contain(2))));
-// expect("kayak", to(not(be(palindrome()))));
-// expect(std::begin(v), std::end(v), to(have(everyItem(equal(3)))));
 
 int main()
 {
@@ -420,6 +403,11 @@ int main()
 
 }
 
+// expect({1,2,3}, to(not(contain(2))));
+// expect("kayak", to(not(be(palindrome()))));
+// expect(std::begin(v), std::end(v), to(have(everyItem(equal(3)))));
+
+
 //template<class Iter, class Matcher>
 //bool expect(Iter first, Iter last, Matcher && matcher)
 //{
@@ -431,4 +419,3 @@ int main()
 //  std::cout << ']' << '\n';
 //  return matcher.matches(first, last);
 //}
-
