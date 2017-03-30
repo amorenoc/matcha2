@@ -1,3 +1,7 @@
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
 #include <tuple>
 #include <utility>
 #include <array>
@@ -118,6 +122,22 @@ namespace matcha {
   };
 
   template<typename T>
+  struct Be 
+  {
+    static_assert(is_matcher<T>::value, "expects a Matcher argument");
+
+    template<typename U>
+    bool matches(const U & actual, T & expected)
+    {
+      return expected.matches(actual);
+    }
+
+    void describe(std::ostream& o, T & expected) {
+      o << "be " << expected;
+    }
+  };
+
+  template<typename T>
   struct Not 
   {
     static_assert(is_matcher<T>::value, "expects a Matcher argument");
@@ -215,30 +235,36 @@ namespace matcha {
 
   };
 
-  template<class ... Ts>
+  template<class T, class ... Ts>
   struct AnyOf
   {
-    static_assert(is_same<Ts...>::value,
+    static_assert(is_same<T, Ts...>::value,
         "IsNot matcher requires a Matcher parameter");
 
-    template<class T>
-    bool matches(const T & actual, const Ts & ... args) 
+    template<class U>
+    bool matches(const U & actual, const T & first, const Ts & ... rest) 
     {
-      for (auto&& x : { args... }) {
-        std::cout << "anyof is " << x << '\n';
-  //            if (x.matches(actual))
-  //                return true;
+      for (auto pred : { first, rest... }) {
+        if (pred.matches(actual))
+          return true;
       }
       return false;
     }
 
+    void describe(std::ostream& o, T & first, Ts & ... rest)
+    {
+      o << "any of " << first;
+
+      for (auto pred : { rest... }) {
+        o << " or " << pred;
+      }
+    }
   };
 
   template<class T, class ... Ts>
   struct OneOf
   {
-    static_assert(is_same<T,Ts...>::value,
-        "oneOf args must be all same type");
+    static_assert(is_same<T,Ts...>::value, "oneOf args must be all same type");
 
     bool matches(const T & actual, const T & first, const Ts & ... rest) 
     {
@@ -246,6 +272,11 @@ namespace matcha {
         std::cout << "x is " << x << '\n';
       }
       return false;
+    }
+
+    void describe(std::ostream& o, const T & first, const Ts & ... rest)
+    {
+      o << "one of " << std::make_tuple(first, rest...);
     }
   };
 
@@ -314,14 +345,17 @@ namespace matcha {
   namespace predicates {
 
     template <typename T>
-    auto to(T && matcher) 
-    {
+    auto to(T && matcher) {
       return make_matcher<To>(std::forward<T>(matcher));
     }
 
     template <typename T>
-    auto operator!(T && matcher)
-    {
+    auto be(T && matcher) {
+      return make_matcher<Be>(std::forward<T>(matcher));
+    }
+
+    template <typename T>
+    auto operator!(T && matcher) {
       return make_matcher<Not>(std::forward<T>(matcher));
     }
 
@@ -330,35 +364,30 @@ namespace matcha {
     }
 
     template <class T, class ... Ts>
-    auto oneOf(T && first, Ts && ... rest) 
-    {
+    auto oneOf(T && first, Ts && ... rest) {
       return make_matcher<OneOf>(std::forward<T>(first),
         std::forward<Ts>(rest)...);
     }
 
     template <class T, class ... Ts> 
-    auto anyOf(T && first, Ts && ... rest)
-    {
+    auto anyOf(T && first, Ts && ... rest) {
       return make_matcher<AnyOf>(std::forward<T>(first), 
         std::forward<Ts>(rest)...);
     }
 
-    auto endWith = [](const std::string & value) 
-    {
+    auto endWith = [](const std::string & value) {
       return make_matcher<EndsWith>(value);
     };
 
     auto endsWith = endWith;
 
     template <class T, class ... Ts>
-    auto contain(T && first, Ts && ... rest) 
-    {
+    auto contain(T && first, Ts && ... rest) {
       return make_matcher<IsContaining>(std::forward<T>(first), 
         std::forward<Ts>(rest)...);
     }
 
-    auto equal = [](auto && value)
-    {
+    auto equal = [](auto && value) {
       return make_matcher<IsEqual>(std::forward<decltype(value)>(value));
     };
 
@@ -396,8 +425,8 @@ int main()
   expect(bar, contain("string", 100));
   //expect(std::begin(foo), std::end(foo), contains(3));
 
-  //expect(4, to(be(anyOf(1,2,3,4,5,6))));
-  //expect(1, oneOf(1,2,3,4,5));
+  expect(4, to(be(anyOf(equal(3), equal(5)))));
+  expect(1, to(be(oneOf(1,2,3,4,5))));
 
   //expect("foo", null());
 
@@ -419,3 +448,4 @@ int main()
 //  std::cout << ']' << '\n';
 //  return matcher.matches(first, last);
 //}
+
